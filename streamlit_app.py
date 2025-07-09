@@ -20,12 +20,20 @@ try:
     from agents.requirements_parses import RequirementsParserAgent
     from autogen_agentchat.conditions import TextMentionTermination
     from autogen_agentchat.teams import SelectorGroupChat
+    import logging
+    from autogen_core import TRACE_LOGGER_NAME
+
 except ImportError as e:
     st.error(f"Missing dependencies: {e}")
     st.info("Please install dependencies using: pip install -r requirements.txt")
     st.stop()
 
 load_dotenv()
+
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(TRACE_LOGGER_NAME)
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.DEBUG)
 
 # Streamlit page configuration
 st.set_page_config(
@@ -201,15 +209,26 @@ class ConversationManager:
             model_client=model_client,
             system_message="""
             You are an Azure Migration Planning Agent. Your role is to coordinate a comprehensive migration analysis.
-            
+
             Your team consists of:
-            - RequirementsParserAgent: Analyzes and extracts migration requirements
+            - RequirementsParserAgent: Analyzes, extracts and generate request for missing migration requirements
             - PricingAgent: Provides Azure service pricing and cost analysis
+            - UserProxyAgent: Acts as a proxy for the user, providing input and feedback to the team
+
+            Your responsibilities:
+            - Manage the overall plan for solving the user's question.
+            - Decide when more information is needed from the user.
+            - Route any requests for user feedback or clarification through the UserProxyAgent.
+
+            You may receive suggestions or questions from other agents. If they require user input, you must determine whether it's appropriate and, if so, send a request to the UserProxyAgent on their behalf.
+
+            Strict rule: You are the only agent that can call or relay messages through the UserProxyAgent.
             
             Process:
             1. Start by having RequirementsParserAgent analyze the user's requirements
-            2. Based on the requirements, ask PricingAgent for relevant pricing information
-            3. Provide a comprehensive migration recommendation including:
+            2. If RequirementsParserAgent generate a request for missing information, take the request in <Request for user> and ask UserProxyAgent for user feedback.
+            3. Based on the requirements, ask PricingAgent for relevant pricing information
+            4. Provide a comprehensive migration recommendation including:
                - Recommended Azure services
                - Architecture overview
                - Cost estimates
@@ -286,9 +305,11 @@ class ConversationManager:
 
             Select the most appropriate agent from {participants} to continue the conversation.
             - Start with PlanningAgent for task coordination
-            - Use RequirementsParserAgent to analyze requirements
-            - Use PricingAgent for cost analysis
-            - Use UserProxyAgent for user interaction if needed
+            - Use RequirementsParserAgent to analyze requirements and detect missing information
+            - Use UserProxyAgent for user interaction if needed for missing information
+            - Use PricingAgent for cost analysis after collection all the requirements
+
+            PlanningAgent is the only agent that can call or relay messages through UserProxyAgent.
             
             Select only one agent name.
             """
@@ -309,6 +330,7 @@ class ConversationManager:
             conversation_messages = []
             
             async for message in team.run_stream(task=task):
+                logger.info(message)
                 if hasattr(message, 'source') and hasattr(message, 'content'):
                     sender = message.source
                     content = str(message.content)
@@ -324,11 +346,18 @@ class ConversationManager:
                         should_show = True
                     
                     # Show important messages from specialized agents
-                    elif sender in ["RequirementsParserAgent", "PricingAgent"]:
+                    elif sender in ["requirements_parser_agent", "pricing_agent"]:
                         # Only show final analysis/results, not intermediate processing
-                        if any(keyword in content.lower() for keyword in 
-                               ["analysis", "summary", "recommendation", "estimate", "cost", "requirements"]):
+                        # should_show = False
+                        # if any(keyword in content.lower() for keyword in 
+                        #        ["analysis", "summary", "recommendation", "estimate", "cost", "requirements"]):
+                        #     should_show = True
+                        # logger.debug(content)
+                        if '<Request for the user>:' in content:
+                        #     # This is a user input request, show it
                             should_show = True
+                            # st.session_state.pending_user_input = True
+                            # st.session_state.user_input_prompt = content.split('<Request for the user>:')[1].strip()
                     
                     # Never show UserProxyAgent messages (handled separately)
                     elif sender == "UserProxyAgent":

@@ -11,8 +11,16 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_agentchat.teams import SelectorGroupChat
 from autogen_agentchat.ui import Console
+import logging
+from autogen_core import TRACE_LOGGER_NAME
 
 load_dotenv()
+
+
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(TRACE_LOGGER_NAME)
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.DEBUG)
 
 # Define a model client. You can use other model client that implements
 # the `ChatCompletionClient` interface.
@@ -85,7 +93,16 @@ async def main() -> None:
         max_selector_attempts=1
     )
 
-    await Console(team.run_stream(task="The customer needs to migrate on Azure a web portal, developed as a 3-tier application, with a PostgreSQL database, and a Redis cache. The application is developed in Python using the Django framework. The customer wants to use PaaS services as much as possible."))
+    task="The customer needs to migrate on Azure a web portal, developed as a 3-tier application, with a PostgreSQL database, and a Redis cache. The application is developed in Python using the Django framework. The customer wants to use PaaS services as much as possible."
+
+    # await Console(team.run_stream(task=task))
+
+    async for message in team.run_stream(task=task):
+        logger.error(message)
+        logger.error(message.content)
+        if message.source in ["RequirementsParserAgent"]:
+            if '<Request for the user>:' in message.content:
+                logger.info(message.content)
 
     # Close the connection to the model client.
     await model_client.close()

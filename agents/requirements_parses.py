@@ -19,7 +19,16 @@ class RequirementsParserAgent():
             - Database and storage types if present
             - Deployment model (IaaS, PaaS, SaaS, containers, serverless, ...)
 
-            If some requirements are not present in the input text, ask user for feedback.
+            You may:
+            - Suggest clarifying questions or requests for more information.
+            - Forward these suggestions to the PlanningAgent.
+
+            You may not:
+            - Interact with the user directly.
+            - Use or invoke the UserProxyAgent under any circumstances.
+
+            If clarifying questions are nedeed, add it:
+            <Request for the user>:<Request text>
             """,
             model_client_stream=True,  # Enable streaming tokens from the model client.
         )
