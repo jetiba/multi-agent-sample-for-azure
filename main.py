@@ -1,20 +1,16 @@
-from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
 from autogen_agentchat.ui import Console
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from agents.pricing import PricingAgent
-from agents.weather import WeatherAgent
+from agents.requirements_parses import RequirementsParserAgent
 import asyncio
 from dotenv import load_dotenv
 import os
 
-from typing import List, Sequence
-
-from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
+from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
-from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage
 from autogen_agentchat.teams import SelectorGroupChat
 from autogen_agentchat.ui import Console
-from autogen_ext.models.openai import OpenAIChatCompletionClient
 
 load_dotenv()
 
@@ -34,7 +30,15 @@ async def main() -> None:
     # await Console(wa.run_stream(task="What is the weather in New York?"))
     # # Close the connection to the model client.
     # await model_client.close()
+
+    user_proxy_agent = UserProxyAgent(
+        name="UserProxyAgent",
+        description="An agent that acts as a proxy for the user, providing input to the team.",
+        input_func=input,
+    )
+
     pa = PricingAgent().initialize(model_client=model_client)
+    rpa = RequirementsParserAgent().initialize(model_client=model_client)
 
     planning_agent = AssistantAgent(
         "PlanningAgent",
@@ -44,7 +48,9 @@ async def main() -> None:
         You are a planning agent.
         Your job is to break down complex tasks into smaller, manageable subtasks.
         Your team members are:
-            PricingAgent: Provides pricing information for Azure services
+            RequirementsParserAgent: Provides requirements from user input.
+            PricingAgent: Provides pricing information for Azure services.
+            UserProxyAgent: Acts as a proxy for the user, providing input and feedback to the team.
 
         You only plan and delegate tasks - you do not execute them yourself.
 
@@ -52,8 +58,6 @@ async def main() -> None:
         1. <agent> : <task>
 
         After all tasks are complete, summarize the findings and end with "TERMINATE".
-
-        A task might require multiple runs with different parameters (e.g. due to pagination).
         """,
     )
 
@@ -70,14 +74,10 @@ async def main() -> None:
     """
 
     text_mention_termination = TextMentionTermination("TERMINATE")
-    max_messages_termination = MaxMessageTermination(max_messages=25)
-    termination = text_mention_termination | max_messages_termination
-
-
-    # await Console(pa.run_stream(task="What is the pricing for Standard E1208 family Virtual Machines in westeurope?"))
+    termination = text_mention_termination
 
     team = SelectorGroupChat(
-        [planning_agent, pa],
+        [planning_agent, rpa, pa, user_proxy_agent],
         model_client=model_client,
         termination_condition=termination,
         selector_prompt=selector_prompt,
@@ -85,9 +85,8 @@ async def main() -> None:
         max_selector_attempts=1
     )
 
-    await Console(team.run_stream(task="What is the pricing for Standard E1208 family Virtual Machines in westeurope?"))
+    await Console(team.run_stream(task="The customer needs to migrate on Azure a web portal, developed as a 3-tier application, with a PostgreSQL database, and a Redis cache. The application is developed in Python using the Django framework. The customer wants to use PaaS services as much as possible."))
 
-   
     # Close the connection to the model client.
     await model_client.close()
 
