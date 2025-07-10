@@ -21,10 +21,31 @@ class ConversationManager:
         self.input_event = threading.Event()
         self.user_response = None
         
+        self.loginit()  # Initialize logging
+
+    def loginit(self):
+        """Initialize logging for the conversation manager"""
         # Logging for agents interaction
         logging.basicConfig(level=logging.WARNING)
         self.logger = logging.getLogger(TRACE_LOGGER_NAME)
         self.logger.addHandler(logging.StreamHandler())
+        self.logger.setLevel(logging.DEBUG)
+
+        # Create file handler
+        file_suffix = time.strftime("%Y%m%d_%H%M%S")
+        file_handler = logging.FileHandler('logs/conversation_logs'+file_suffix+'.log')
+        file_handler.setLevel(logging.DEBUG)
+
+        file_handler.addFilter(lambda record: ("type='TextMessage'" in record.getMessage() or 
+                   "type='UserInputRequestedEvent'" in record.getMessage() or
+                   "You are selecting the next agent" in record.getMessage()) and 'ModelClientStreamingChunkEvent' not in record.getMessage())
+        
+        # Create formatter
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        # Add file handler to logger
+        self.logger.addHandler(file_handler)
         self.logger.setLevel(logging.DEBUG)
     
     async def create_model_client(self, endpoint: str, api_key: str, model: str, api_version: str):
@@ -63,6 +84,7 @@ class ConversationManager:
 
             Strict rules:
             - You are the only agent that can call or relay messages through the UserProxyAgent.
+            - Don't try to reply or requests directly to the user. 
             - When sending a request for user input, send **only ONE request at a time** and wait for the user response before proceeding.
             - Do not batch multiple questions into a single user request.
             - Do not add XML tags or special formatting when communicating with the user.
@@ -160,8 +182,6 @@ class ConversationManager:
             - Select only ONE agent.
             - Do NOT select multiple agents or provide explanations. Return only the agent name.
             """
-
-            self.logger.info(selector_prompt)
             
             team = SelectorGroupChat(
                 [planning_agent, rpa, pa, user_proxy_agent],
