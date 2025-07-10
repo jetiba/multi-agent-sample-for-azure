@@ -21,14 +21,12 @@ class RequirementsParserAgent():
 
             You may:
             - Suggest clarifying questions or requests for more information.
+            - Generate only one missing requirement request per interaction
             - Forward these suggestions to the PlanningAgent.
 
             You may not:
             - Interact with the user directly.
             - Use or invoke the UserProxyAgent under any circumstances.
-
-            If clarifying questions are nedeed, add it:
-            <Request for the user>:<Request text>
             """,
             model_client_stream=True,  # Enable streaming tokens from the model client.
         )
